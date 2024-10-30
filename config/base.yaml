@@ -1,2 +1,48 @@
 # To set current training and test tasks, current model, etc...
 # Model hyperparams and dataset used will be defined in config/test/TEST_NAME, in the yaml corresponding to the model
+
+# Project-level settings
+project:
+  seed: 42                # Random seed for reproducibility
+  device: "cuda"           # Device to use ("cuda" or "cpu"), may be overridden by either task config or model config
+  debug: false             # Set to true for verbose logging
+
+# Current model, training and test tasks
+task:
+  model: "RNI"  # Model to be used: "RNI" (GCN-RNI), "GAT", "GPS" (GraphGPS)
+  train_task: "task_1"  # TODO: which tasks do we have?
+  test_task: "task_1"  # TODO: which tasks do we have?
+
+# Default training settings (may be overridden by either task config or model config)
+training:
+  save_weights: true       # Whether to save model weights after each epoch
+  checkpoint_interval: 5   # Save model weights every X epochs
+  resume_training: false    # Whether to resume training from a saved checkpoint
+  save_best_model: true     # Save the model with the best validation performance
+  early_stopping: true      # Stop early if no improvement after X epochs
+  patience: 10              # Number of epochs with no improvement before stopping
+  log_interval: 10          # Log metrics every X batches
+  eval_during_training: true  # Whether to evaluate on validation set during training
+
+# Logging settings
+logging:
+  log_to_console: true      # Whether to log output to the console
+  log_to_file: true         # Whether to save logs to a file
+
+# Scheduler settings (general)
+scheduler:
+  use_scheduler: true       # Whether to use a learning rate scheduler
+  save_lr_state: true       # Save scheduler state along with checkpoints
+
+# Checkpoint settings
+checkpoint:
+  save_checkpoint: true     # Whether to save a checkpoint after each epoch
+  checkpoint_dir: "./checkpoints/"  # Directory to save checkpoints
+  checkpoint_interval: 5    # Save a checkpoint every X epochs
+
+# Evaluation settings
+evaluation:
+  metrics:                    # Metrics to evaluate the model
+    - "accuracy"
+    - "f1_score"
+  best_model_metric: "accuracy" # Metric to determine the best model checkpoint
