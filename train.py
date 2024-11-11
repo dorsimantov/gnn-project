@@ -1,71 +1,186 @@
-import torch
-import torch.nn.functional as F
-from torch_geometric.data import DataLoader
-from torch_geometric.nn import GAT, GPSConv
-from datasets import EXPDataset
+import os
+import time
 import yaml
+import json
+import torch
+import matplotlib.pyplot as plt
+from torch.utils.tensorboard import SummaryWriter
+from torch_geometric.nn import GPSConv
+from torch_geometric.nn.models import GAT
+from torch_geometric.loader import DataLoader
+import datasets
 
+# Helper function to load a YAML file
+def load_yaml(filepath):
+    with open(filepath, 'r') as file:
+        return yaml.safe_load(file)
 
-# Configuration file for training parameters and model settings
-def load_config(config_path):
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return config
+# Load base configuration to get current task
+base_config = load_yaml('config/base.yaml')
+train_name = base_config['task']['train_task']
+model_name = base_config['task']['model']
 
+# 1. Read task hyperparameters from config/train/TRAIN_NAME/train_info.yaml
+# TODO: any training hyperparams shared between models at all?
+# For now we do nothing with these (yaml is empty)
+task_config_path = f'config/train/{train_name}/train_info.yaml'
+task_hyperparams = load_yaml(task_config_path)
+dataset_name = task_hyperparams['dataset']['dataset_name']
 
-def create_model(model_type, model_params):
-    if model_type == "GAT":
-        return GAT(**model_params)
-    elif model_type == "GPS":
-        return GPSConv(**model_params)
-    else:
-        raise ValueError(f"Unknown model type: {model_type}")
+# 2. Read model-specific hyperparameters for the selected task
+task_for_model_config_path = f'config/train/{train_name}/{model_name}.yaml'
+task_for_model_hyperparams = load_yaml(task_for_model_config_path)
+train_hyperparams = task_for_model_hyperparams['training']
+model_hyperparams = task_for_model_hyperparams['model']
 
+# 3. Set up directories for saving logs, weights, and results
+current_time = time.strftime("%Y-%m-%d_%H-%M-%S")
+save_dir = f"models/{model_name}/weights/{train_name}/{current_time}"
+os.makedirs(save_dir, exist_ok=True)
 
-def train(model, data_loader, optimizer, device):
+logs_dir = os.path.join(save_dir, 'logs')
+os.makedirs(logs_dir, exist_ok=True)
+
+# 4. Setup TensorBoard for logging (optional)
+writer = SummaryWriter(log_dir=logs_dir)
+
+# 5. Choose the model (GPSConv or custom GAT from models.GAT)
+device = torch.device(train_hyperparams['device'])
+
+if model_name == "GPS":
+    # GPSConv model (custom graph transformer layer)
+    model = GPSConv(
+        channels=model_hyperparams['channels'],
+        conv=model_hyperparams.get('conv', None),  # If you need to define a custom MPNN layer
+        heads=model_hyperparams.get('heads', 1),
+        dropout=model_hyperparams.get('dropout', 0.0),
+        act=model_hyperparams.get('act', 'relu'),
+        norm=model_hyperparams.get('norm', 'batch_norm'),
+        attn_type=model_hyperparams.get('attn_type', 'multihead'),
+        attn_kwargs=model_hyperparams.get('attn_kwargs', None),  # Additional attention args
+    ).to(device)
+
+elif model_name == "GAT":
+    # Use the custom GAT model defined in models.GAT
+    model = GAT(
+        in_channels=model_hyperparams['in_channels'],  # Input feature size
+        hidden_channels=model_hyperparams['hidden_channels'],  # Hidden layer size
+        num_layers=model_hyperparams['num_layers'],  # Number of message passing layers
+        out_channels=model_hyperparams.get('out_channels', None),  # Output size (optional)
+        v2=model_hyperparams.get('v2', False),  # GATv2 flag
+        dropout=model_hyperparams.get('dropout', 0.0),  # Dropout probability
+        act=model_hyperparams.get('act', 'relu'),  # Activation function
+        act_first=model_hyperparams.get('act_first', False),  # Apply activation before normalization
+        norm=model_hyperparams.get('norm', None),  # Normalization function
+        jk=model_hyperparams.get('jk', None),  # Jumping Knowledge mode
+        act_kwargs=model_hyperparams.get('act_kwargs', None),  # Additional activation arguments
+        norm_kwargs=model_hyperparams.get('norm_kwargs', None),  # Additional normalization arguments
+    ).to(device)
+
+else:
+    raise ValueError(f"Unsupported model: {model_name}")
+
+optimizer = torch.optim.Adam(model.parameters(), lr=train_hyperparams['learning_rate'],
+                             weight_decay=train_hyperparams['weight_decay'])
+
+# Define the dataset and a DataLoader
+if dataset_name == 'EXP':
+    dataset = datasets.EXPDataset
+elif dataset_name == 'CEXP':
+    dataset = datasets.CEXPDataset
+else:
+    raise ValueError(f"Unsupported dataset: {dataset_name}")
+
+train_loader = DataLoader(dataset, batch_size=train_hyperparams['batch_size'], shuffle=True)
+
+train_losses = []
+train_accuracies = []
+
+# Training loop (simplified)
+for epoch in range(train_hyperparams['epochs']):
     model.train()
-    total_loss = 0
-    for data in data_loader:
-        data = data.to(device)
+    total_loss = 0.0
+    correct_predictions = 0
+    total_samples = 0
+
+    for batch in train_loader:
         optimizer.zero_grad()
-        output = model(data.x, data.edge_index)
-        loss = F.cross_entropy(output, data.y)
+        output = model(batch.x, batch.edge_index)  # GPSConv and custom GAT model expect these inputs
+        loss = calculate_loss(output, batch.y)  # Adjust with your actual loss calculation
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-    return total_loss / len(data_loader)
 
+        # Compute accuracy (assuming binary classification for simplicity)
+        predicted_labels = output.argmax(dim=1)
+        correct_predictions += (predicted_labels == batch.y).sum().item()
+        total_samples += batch.y.size(0)
 
-def test(model, data_loader, device):
-    model.eval()
-    correct = 0
-    for data in data_loader:
-        data = data.to(device)
-        output = model(data.x, data.edge_index)
-        pred = output.argmax(dim=1)
-        correct += pred.eq(data.y).sum().item()
-    return correct / len(data_loader.dataset)
+    # Log to TensorBoard
+    writer.add_scalar('Loss/train', total_loss, epoch)
 
+    # Calculate and log accuracy
+    accuracy = correct_predictions / total_samples
+    writer.add_scalar('Accuracy/train', accuracy, epoch)
 
-def main(config_path, data_path, use_new_data=False):
-    # Load configuration
-    config = load_config(config_path)
+    # Append to list for later plotting
+    train_losses.append(total_loss)
+    train_accuracies.append(accuracy)
 
-    # Dataset and DataLoader
-    dataset = EXPDataset(data_path, use_new_data=use_new_data)
-    data_loader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True)
+    # Save weights at specified intervals or after training
+    if epoch % 10 == 0 or epoch == model_hyperparams['training']['epochs'] - 1:
+        torch.save(model.state_dict(), os.path.join(save_dir, f'weights_epoch_{epoch}.pth'))
 
-    # Model setup
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = create_model(config['model']['type'], config['model']['params']).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
+# 6. Save task and train hyperparameters and current time as train_info.json
+train_info = {
+    'task_hyperparams': task_hyperparams,
+    'train_hyperparams': train_hyperparams,
+    'current_time': current_time
+}
+train_info_path = os.path.join(save_dir, 'train_info.json')
+with open(train_info_path, 'w') as f:
+    json.dump(train_info, f, indent=4)
 
-    # Training loop
-    for epoch in range(config['epochs']):
-        train_loss = train(model, data_loader, optimizer, device)
-        test_acc = test(model, data_loader, device)
-        print(f"Epoch {epoch + 1}/{config['epochs']}, Loss: {train_loss:.4f}, Test Accuracy: {test_acc:.4f}")
+# 7. Save model hyperparameters and current time as MODEL_NAME.json
+model_info = {
+    'model_hyperparams': model_hyperparams,
+    'current_time': current_time
+}
+model_info_path = os.path.join(save_dir, f'{model_name}.json')
+with open(model_info_path, 'w') as f:
+    json.dump(model_info, f, indent=4)
 
+# 8. Dump results in results/train/TRAIN_NAME/MODEL_NAME
+results_dir = f"results/train/{train_name}/{model_name}/{current_time}"
+os.makedirs(results_dir, exist_ok=True)
 
-if __name__ == "__main__":
-    main("config/train/baseline_EXP/GAT.yaml", "datasets/EXP", use_new_data=True)
+# Save any output or metrics (example)
+output_path = os.path.join(results_dir, 'output.txt')
+with open(output_path, 'w') as f:
+    f.write("Training completed successfully.\n")
+
+# Example of saving plots (loss and accuracy)
+# Plot and save loss
+plt.figure(figsize=(8, 6))
+plt.plot(range(train_hyperparams['epochs']), train_losses, label='Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.title('Training Loss over Epochs')
+plt.legend()
+loss_plot_path = os.path.join(results_dir, 'training_loss.png')
+plt.savefig(loss_plot_path)
+plt.close()
+
+# Plot and save accuracy
+plt.figure(figsize=(8, 6))
+plt.plot(range(train_hyperparams['epochs']), train_accuracies, label='Accuracy', color='green')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.title('Training Accuracy over Epochs')
+plt.legend()
+accuracy_plot_path = os.path.join(results_dir, 'training_accuracy.png')
+plt.savefig(accuracy_plot_path)
+plt.close()
+
+# Close TensorBoard writer
+writer.close()
