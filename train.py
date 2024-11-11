@@ -1,70 +1,71 @@
-# TODO: Get current training task from base.yaml
-# TODO: Read task hyperparams from config/train/TRAIN_NAME/train_info.yaml into a dictionary
-# TODO: Read model hyperparams (for specific task) from config/train/TRAIN_NAME/MODEL_NAME.yaml into a dictionary
-# TODO: Train the model
-#  Dump training weights in models/weights/TRAIN_NAME, unless we disable weights saving (in either base config, task info or model config for task)
-#  Dump training logs in models/weights/TRAIN_NAME/logs
-# TODO: Save task hyperparams from config/train/TRAIN_NAME/train_info.yaml and current time as train_info.json in both results/train/TRAIN_NAME and models/MODEL_NAME/weights/TRAIN_NAME
-# TODO: Save model hyperparams from config/train/TRAIN_NAME/MODEL_NAME.yaml and current time as MODEL_NAME.json in both results/train/TRAIN_NAME/MODEL_NAME and models/MODEL_NAME/weights/TRAIN_NAME
-# TODO: Dump results in the results/train/TRAIN_NAME/MODEL_NAME (separate folders for outputs, plots, and metrics)
-
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GAT
-from torch_geometric.loader import DataLoader
+from torch_geometric.data import DataLoader
+from torch_geometric.nn import GAT, GPSConv
+from datasets import EXPDataset
 import yaml
 
-# Load parameters from YAML file
-def load_config(filepath):
-    with open(filepath, 'r') as file:
-        config = yaml.safe_load(file)
+
+# Configuration file for training parameters and model settings
+def load_config(config_path):
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
     return config
 
-# Training loop
-def train(model, loader, optimizer, device):
+
+def create_model(model_type, model_params):
+    if model_type == "GAT":
+        return GAT(**model_params)
+    elif model_type == "GPS":
+        return GPSConv(**model_params)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
+
+
+def train(model, data_loader, optimizer, device):
     model.train()
-    for data in loader:
+    total_loss = 0
+    for data in data_loader:
         data = data.to(device)
         optimizer.zero_grad()
-        out = model(data.x, data.edge_index)
-        loss = F.nll_loss(out[data.train_mask], data.y[data.train_mask])
+        output = model(data.x, data.edge_index)
+        loss = F.cross_entropy(output, data.y)
         loss.backward()
         optimizer.step()
+        total_loss += loss.item()
+    return total_loss / len(data_loader)
 
-# Evaluation function
-def test(model, loader, device):
+
+def test(model, data_loader, device):
     model.eval()
     correct = 0
-    for data in loader:
+    for data in data_loader:
         data = data.to(device)
-        out = model(data.x, data.edge_index)
-        pred = out.argmax(dim=1)
-        correct += (pred[data.test_mask] == data.y[data.test_mask]).sum().item()
-    return correct / sum([data.test_mask.sum().item() for data in loader])
+        output = model(data.x, data.edge_index)
+        pred = output.argmax(dim=1)
+        correct += pred.eq(data.y).sum().item()
+    return correct / len(data_loader.dataset)
 
-# Main function
-def main(config_path):
-    # Load config
+
+def main(config_path, data_path, use_new_data=False):
+    # Load configuration
     config = load_config(config_path)
-    model_params = config['model']
-    training_params = config['training']
 
-    # Initialize model and optimizer
-    device = torch.device(training_params['device'])
-    model = GAT(**model_params).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=training_params['learning_rate'], weight_decay=training_params['weight_decay'])
+    # Dataset and DataLoader
+    dataset = EXPDataset(data_path, use_new_data=use_new_data)
+    data_loader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True)
 
-    # Assuming `train_loader` and `test_loader` are predefined DataLoader objects
-    # Replace with actual dataset and DataLoader setup as needed
-    train_loader = DataLoader(...)
-    test_loader = DataLoader(...)
+    # Model setup
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = create_model(config['model']['type'], config['model']['params']).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
 
     # Training loop
-    for epoch in range(training_params['epochs']):
-        train(model, train_loader, optimizer, device)
-        acc = test(model, test_loader, device)
-        print(f'Epoch {epoch + 1}, Accuracy: {acc:.4f}')
+    for epoch in range(config['epochs']):
+        train_loss = train(model, data_loader, optimizer, device)
+        test_acc = test(model, data_loader, device)
+        print(f"Epoch {epoch + 1}/{config['epochs']}, Loss: {train_loss:.4f}, Test Accuracy: {test_acc:.4f}")
 
-# Run the main function
+
 if __name__ == "__main__":
-    main("config/train/baseline/GAT.yaml")
+    main("config/train/baseline_EXP/GAT.yaml", "datasets/EXP", use_new_data=True)
