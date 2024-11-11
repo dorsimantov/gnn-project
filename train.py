@@ -9,6 +9,7 @@ from torch_geometric.nn import GPSConv
 from torch_geometric.nn.models import GAT
 from torch_geometric.loader import DataLoader
 import datasets
+import pprint
 
 # Helper function to load a YAML file
 def load_yaml(filepath):
@@ -85,9 +86,9 @@ optimizer = torch.optim.Adam(model.parameters(), lr=train_hyperparams['learning_
 
 # Define the dataset and a DataLoader
 if dataset_name == 'EXP':
-    dataset = datasets.EXPDataset
+    dataset = datasets.EXPDataset()
 elif dataset_name == 'CEXP':
-    dataset = datasets.CEXPDataset
+    dataset = datasets.CEXPDataset()
 else:
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 
@@ -102,7 +103,7 @@ for epoch in range(train_hyperparams['epochs']):
     total_loss = 0.0
     correct_predictions = 0
     total_samples = 0
-
+    # pprint.pp(train_loader.dataset)
     for batch in train_loader:
         optimizer.zero_grad()
         output = model(batch.x, batch.edge_index)  # GPSConv and custom GAT model expect these inputs
