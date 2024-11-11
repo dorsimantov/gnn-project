@@ -86,9 +86,9 @@ optimizer = torch.optim.Adam(model.parameters(), lr=train_hyperparams['learning_
 
 # Define the dataset and a DataLoader
 if dataset_name == 'EXP':
-    dataset = datasets.EXPDataset()
+    dataset = datasets.EXPDataset().to(device)
 elif dataset_name == 'CEXP':
-    dataset = datasets.CEXPDataset()
+    dataset = datasets.CEXPDataset().to(device)
 else:
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 
@@ -106,8 +106,8 @@ for epoch in range(train_hyperparams['epochs']):
     # pprint.pp(train_loader.dataset)
     for batch in train_loader:
         optimizer.zero_grad()
-        output = model(batch.x, batch.edge_index)  # GPSConv and custom GAT model expect these inputs
-        loss = calculate_loss(output, batch.y)  # Adjust with your actual loss calculation
+        output = model(batch.x, batch.edge_index)
+        loss = calculate_loss(output, batch.y)  # Adjust with actual loss calculation
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
