@@ -105,6 +105,12 @@ for epoch in range(train_hyperparams['epochs']):
     total_samples = 0
     # pprint.pp(train_loader.dataset)
     for batch in train_loader:
+        print(batch.x)
+        print(f'x dim: {batch.x.shape}')
+        print(batch.y)
+        print(f'y dim: {batch.y.shape}')
+        print(batch.edge_index)
+        print(f'x edge index: {batch.edge_index.shape}')
         optimizer.zero_grad()
         output = model(batch.x, batch.edge_index)
         loss = calculate_loss(output, batch.y)  # Adjust with actual loss calculation
