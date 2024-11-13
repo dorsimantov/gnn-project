@@ -1,24 +1,25 @@
 model:
-  type: "GAT"                # Model type: "GAT" for GATConv
-  in_channels: -1             # Size of each input sample
-  hidden_channels: 32         # Size of each hidden layer sample
-  num_layers: 3               # Number of message passing layers
-  out_channels: 8             # Output feature dimension
-  v2: False                   # Set to True to use GATv2Conv
-  heads: 4                    # Number of attention heads
-  concat: True                # Concatenate attention heads (True/False)
-  dropout: 0.2                # Dropout probability
-  act: "relu"                 # Activation function
-  act_first: False            # Apply activation before normalization
-  act_kwargs: {}              # Optional kwargs for activation function
-  norm: 'LayerNorm'           # Normalization function (e.g., 'BatchNorm', 'LayerNorm')
-  norm_kwargs: {}             # Optional kwargs for normalization function
-  jk: 'cat'                   # Jumping Knowledge mode (options: 'cat', 'max', 'lstm')
-  add_self_loops: True        # Add self-loops for attention mechanism
+  type: "GAT" # Model type: "GAT" for GATConv
+  in_channels: -1 # Size of each input sample
+  hidden_channels: 32 # Size of each hidden layer sample
+  num_layers: 3 # Number of message passing layers
+  out_channels: 4 # Output feature dimension
+  num_classes: 2 # Number of classes
+  v2: False # Set to True to use GATv2Conv
+  heads: 4 # Number of attention heads
+  concat: True # Concatenate attention heads (True/False)
+  dropout: 0.2 # Dropout probability
+  act: "relu" # Activation function
+  act_first: False # Apply activation before normalization
+  act_kwargs: {} # Optional kwargs for activation function
+  norm: "BatchNorm" # Normalization function (e.g., 'BatchNorm', 'LayerNorm')
+  norm_kwargs: {} # Optional kwargs for normalization function
+  jk: "cat" # Jumping Knowledge mode (options: 'cat', 'max', 'lstm')
+  add_self_loops: True # Add self-loops for attention mechanism
 
 training:
-  batch_size: 4              # Batch size for training
-  epochs: 100                 # Number of training epochs
-  learning_rate: 0.01         # Learning rate
-  weight_decay: 0.0005        # Weight decay (L2 regularization)
-  device: "cuda"              # Device to use ("cuda" or "cpu")
+  batch_size: 20 # Batch size for training
+  epochs: 100 # Number of training epochs
+  learning_rate: 0.01 # Learning rate
+  weight_decay: 0.0005 # Weight decay (L2 regularization)
+  device: "cuda" # Device to use ("cuda" or "cpu")
