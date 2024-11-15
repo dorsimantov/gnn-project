@@ -34,23 +34,23 @@ class CustomGAT(torch.nn.Module):
             ),  # Additional normalization arguments
         )
 
-        print(
-            model_hyperparams.get("out_channels", None),
-            model_hyperparams.get("num_classes", None),
-        )
+        # print(
+        #     model_hyperparams.get("out_channels", None),
+        #     model_hyperparams.get("num_classes", None),
+        # )
 
         self.fc = torch.nn.Linear(
             model_hyperparams.get("out_channels", None),
             model_hyperparams.get("num_classes", None),
         )
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, batch):
         # Forward pass through the GAT layers
         x = self.model.forward(x, edge_index)
 
         # For graph-level tasks, apply global pooling
         x = global_max_pool(
-            x, data.batch
+            x, batch
         )  # or global_mean_pool(x, data.batch) for average pooling
         x = self.fc(x)  # Fully connected layer to match number of classes
 

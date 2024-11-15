@@ -108,15 +108,15 @@ for epoch in range(train_hyperparams["epochs"]):
     total_samples = 0
     # pprint.pp(train_loader.dataset)
     for batch in train_loader:
-        print(batch.x)
-        print(f"x dim: {batch.x.shape}")
-        print(batch.y)
-        print(f"y dim: {batch.y.shape}")
-        print(batch.edge_index)
-        print(f"edge index shape: {batch.edge_index.shape}")
+        # print(batch.x)
+        # print(f"x dim: {batch.x.shape}")
+        # print(batch.y)
+        # print(f"y dim: {batch.y.shape}")
+        # print(batch.edge_index)
+        # print(f"edge index shape: {batch.edge_index.shape}")
         optimizer.zero_grad()
-        output = model(batch.x, batch.edge_index)
-        print(f"output dim: {output.shape}")
+        output = model(batch.x, batch.edge_index, batch.batch)
+        # print(f"output dim: {output.shape}")
         loss = F.nll_loss(output, batch.y)  # Adjust with actual loss calculation
         loss.backward()
         optimizer.step()
@@ -139,7 +139,7 @@ for epoch in range(train_hyperparams["epochs"]):
     train_accuracies.append(accuracy)
 
     # Save weights at specified intervals or after training
-    if epoch % 10 == 0 or epoch == model_hyperparams["training"]["epochs"] - 1:
+    if epoch % 10 == 0 or epoch == train_hyperparams["epochs"] - 1:
         torch.save(
             model.state_dict(), os.path.join(save_dir, f"weights_epoch_{epoch}.pth")
         )
