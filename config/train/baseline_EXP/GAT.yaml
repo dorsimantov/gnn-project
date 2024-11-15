@@ -14,12 +14,12 @@ model:
   act_kwargs: {} # Optional kwargs for activation function
   norm: "BatchNorm" # Normalization function (e.g., 'BatchNorm', 'LayerNorm')
   norm_kwargs: {} # Optional kwargs for normalization function
-  jk: "cat" # Jumping Knowledge mode (options: 'cat', 'max', 'lstm')
+  # jk: 'cat' # Jumping Knowledge mode (options: 'cat', 'max', 'lstm')
   add_self_loops: True # Add self-loops for attention mechanism
 
 training:
-  batch_size: 20 # Batch size for training
-  epochs: 30 # Number of training epochs
+  batch_size: 2000000 # Batch size for training
+  epochs: 100 # Number of training epochs
   learning_rate: 0.001 # Learning rate
   weight_decay: 0.0005 # Weight decay (L2 regularization)
   device: "cuda" # Device to use ("cuda" or "cpu")

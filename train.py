@@ -117,6 +117,7 @@ for epoch in range(train_hyperparams["epochs"]):
         optimizer.zero_grad()
         output = model(batch.x, batch.edge_index, batch.batch)
         # print(f"output dim: {output.shape}")
+        # print(f"output: {output}")
         loss = F.nll_loss(output, batch.y)  # Adjust with actual loss calculation
         loss.backward()
         optimizer.step()
