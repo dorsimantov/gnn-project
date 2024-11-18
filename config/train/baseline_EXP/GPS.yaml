@@ -1,18 +1,16 @@
 model:
   type: "GPS"                 # Model type: "GPS" for GPSConv
-  in_channels: 16             # Size of each input sample
-  hidden_channels: 32         # Size of each hidden layer sample
-  num_layers: 3               # Number of message passing layers
-  out_channels: 8             # Output feature dimension
-  dropout: 0.2                # Dropout probability
+  channels: 2                # Size of each input sample
+  # conv: None                  # The local message passing layer
+  heads: 1                    # Number of multi-head-attentions
+  # dropout: 0.2                # Dropout probability of intermediate embeddings
   act: "relu"                 # Activation function
-  act_first: False            # Apply activation before normalization
   act_kwargs: {}              # Optional kwargs for activation function
-  norm: 'LayerNorm'           # Normalization function (e.g., 'BatchNorm', 'LayerNorm')
+  # norm: 'batch_norm'          # Normalization function
   norm_kwargs: {}             # Optional kwargs for normalization function
-  jk: 'cat'                   # Jumping Knowledge mode (options: 'cat', 'max', 'lstm')
-  gps_num_heads: 1            # Number of heads in the GPSConv (specific to GPS model)
-  add_self_loops: True        # Add self-loops for GPSConv
+  # attn_type: 'multihead'      # Global attention type, multihead or performer
+  # attn_kwargs: None           # Arguments passed to the attention layer
+  num_classes: 2  # Number of classes for graph classification
 
 training:
   batch_size: 32              # Batch size for training

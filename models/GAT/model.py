@@ -1,4 +1,5 @@
 import torch
+import torch_scatter
 import torch.nn.functional as F
 from torch_geometric.nn.models import GAT
 from torch_geometric.nn import global_max_pool
@@ -46,7 +47,7 @@ class CustomGAT(torch.nn.Module):
 
     def forward(self, x, edge_index, batch):
         # Forward pass through the GAT layers
-        x = self.model.forward(x, edge_index)
+        x = self.model.forward(x=x, edge_index=edge_index, batch=batch)
 
         # For graph-level tasks, apply global pooling
         x = global_max_pool(

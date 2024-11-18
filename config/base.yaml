@@ -9,7 +9,7 @@ project:
 
 # Current model, training and test tasks
 task:
-  model: "GAT"  # Model to be used: "RNI" (GCN-RNI), "GAT", "GPS" (GraphGPS)
+  model: "GPS"  # Model to be used: "RNI" (GCN-RNI), "GAT", "GPS" (GraphGPS)
   train_task: "baseline_EXP"  # TODO: which tasks do we have?
   test_task: "task_1"  # TODO: which tasks do we have?
 

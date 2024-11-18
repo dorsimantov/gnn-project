@@ -10,9 +10,10 @@ from torch_geometric.nn import GPSConv
 from torch_geometric.nn.models import GAT
 from torch_geometric.loader import DataLoader
 import datasets
-import pprint
+from tqdm import tqdm
 
 from models.GAT.model import CustomGAT
+from models.GPS.model import CustomGPS
 
 
 # Helper function to load a YAML file
@@ -55,19 +56,8 @@ device = torch.device(train_hyperparams["device"])
 
 if model_name == "GPS":
     # GPSConv model (custom graph transformer layer)
-    model = GPSConv(
-        channels=model_hyperparams["channels"],
-        conv=model_hyperparams.get(
-            "conv", None
-        ),  # If you need to define a custom MPNN layer
-        heads=model_hyperparams.get("heads", 1),
-        dropout=model_hyperparams.get("dropout", 0.0),
-        act=model_hyperparams.get("act", "relu"),
-        norm=model_hyperparams.get("norm", "batch_norm"),
-        attn_type=model_hyperparams.get("attn_type", "multihead"),
-        attn_kwargs=model_hyperparams.get(
-            "attn_kwargs", None
-        ),  # Additional attention args
+    model = CustomGPS(
+        model_hyperparams,
     ).to(device)
 
 elif model_name == "GAT":
@@ -101,18 +91,18 @@ train_losses = []
 train_accuracies = []
 
 # Training loop (simplified)
-for epoch in range(train_hyperparams["epochs"]):
+for epoch in tqdm(range(train_hyperparams["epochs"]), desc="Epochs"):
     model.train()
     total_loss = 0.0
     correct_predictions = 0
     total_samples = 0
     # pprint.pp(train_loader.dataset)
     for batch in train_loader:
-        # print(batch.x)
+        # print(f"x: {batch.x}")
         # print(f"x dim: {batch.x.shape}")
-        # print(batch.y)
+        # f"y: {batch.y}"
         # print(f"y dim: {batch.y.shape}")
-        # print(batch.edge_index)
+        # print(f"edge index: {batch.edge_index}")
         # print(f"edge index shape: {batch.edge_index.shape}")
         optimizer.zero_grad()
         output = model(batch.x, batch.edge_index, batch.batch)
