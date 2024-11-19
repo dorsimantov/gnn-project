@@ -1,16 +1,12 @@
-import os.path as osp
 import numpy as np
 import argparse
 import torch
-from torch.functional import Tensor
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
-from torch_scatter import scatter_mean, scatter_max
-from torch_geometric.datasets import TUDataset
-from torch_geometric.utils import degree
+from torch_geometric.nn import GATConv, GPSConv
+from torch_scatter import scatter_max
 import torch_geometric.transforms as T
-from k_gnn import GraphConv, max_pool
-from k_gnn import TwoMalkin, ConnectedThreeMalkin
+from k_gnn import GraphConv
 
 from PlanarSATPairsDataset import PlanarSATPairsDataset
 
@@ -99,28 +95,59 @@ dataset = PlanarSATPairsDataset(
 
 
 class Net(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, conv_type="gatconv"):
         super(Net, self).__init__()
+        self.conv_type = conv_type  # Flag to control which layer type to use
+        self.norm = NORM
+        self.width = WIDTH
         deterministic_dims = WIDTH - int(RANDOM_RATIO * WIDTH)
-        if (
-            deterministic_dims > 0
-        ):  # Transform the deterministic dimensions using additional GraphConv
-            self.conv1 = GraphConv(dataset.num_features, 32, norm=NORM)
-            self.conv2 = GraphConv(32, deterministic_dims, norm=NORM)
+
+        if deterministic_dims > 0:
+            self.conv1 = self._get_conv_layer(dataset.num_features, 32)
+            self.conv2 = self._get_conv_layer(32, deterministic_dims)
+
         self.conv_layers = torch.nn.ModuleList()
-        for layer in range(LAYERS):
-            self.conv_layers.append(GraphConv(WIDTH, WIDTH, norm=NORM))
+        for _ in range(LAYERS):
+            self.conv_layers.append(self._get_conv_layer(WIDTH, WIDTH))
+
         self.fc1 = torch.nn.Linear(WIDTH, WIDTH)
         self.fc2 = torch.nn.Linear(WIDTH, 32)
         self.fc3 = torch.nn.Linear(32, dataset.num_classes)
 
+    def _get_conv_layer(self, in_channels, out_channels):
+        """
+        Returns the appropriate convolutional layer based on the conv_type flag.
+        """
+        if self.conv_type == "gpsconv":
+            # Example GPSConv configuration; adjust hyperparameters as needed
+            conv = GATConv(in_channels, out_channels, heads=4, concat=False)
+            return GPSConv(in_channels, conv=conv, heads=4)
+        elif self.conv_type == "gatconv":
+            return GATConv(in_channels, out_channels)
+        else:
+            print("yo")
+            # Default to GraphConv
+            return GraphConv(in_channels, out_channels, norm=None)
+
     def reset_parameters(self):
         for name, module in self._modules.items():
-            try:
+            if hasattr(module, "reset_parameters"):
+                # If the module has a reset_parameters method, call it
                 module.reset_parameters()
-            except AttributeError:
-                for x in module:
-                    x.reset_parameters()
+            elif isinstance(module, (list, torch.nn.ModuleList)):
+                # If it's a list or ModuleList, iterate over its elements
+                for submodule in module:
+                    if hasattr(submodule, "reset_parameters"):
+                        print("sub: ", submodule)
+                        submodule.reset_parameters()
+            elif isinstance(module, int):
+                # Skip integers explicitly
+                print(
+                    f"Skipping reset_parameters for {name} (int type detected: {module})"
+                )
+            else:
+                # Handle unexpected types gracefully
+                print(f"Unexpected type for {name}: {type(module)}. Skipping.")
 
     def forward(self, data):
         if int(RANDOM_RATIO * WIDTH) > 0:  # Randomness Exists
@@ -218,7 +245,7 @@ tst_lrn_accuracies = np.zeros((EPOCHS, SPLITS))
 
 for i in range(SPLITS):
     model.reset_parameters()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE / 100)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.7, patience=5, min_lr=LEARNING_RATE
     )
