@@ -4,7 +4,11 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GATConv, GPSConv
+from torch_geometric.nn import GCNConv
+from torch_geometric.nn import SAGEConv
+from torch_geometric.nn import GINConv
 from torch_scatter import scatter_max
+from torch import nn
 import torch_geometric.transforms as T
 from k_gnn import GraphConv
 
@@ -30,6 +34,20 @@ parser.add_argument(
 parser.add_argument("-activation", type=str, default="tanh")  # Non-linearity used
 parser.add_argument("-learnRate", type=float, default=0.001)  # Learning Rate
 args = parser.parse_args()
+
+
+# Define the MLP
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)
+        )
+
+    def forward(self, x):
+        return self.net(x)
 
 
 def print_or_log(input_data, log=True, log_file_path="Debug.txt"):
@@ -95,7 +113,7 @@ dataset = PlanarSATPairsDataset(
 
 
 class Net(torch.nn.Module):
-    def __init__(self, conv_type="gatconv"):
+    def __init__(self, conv_type="sageconv"):
         super(Net, self).__init__()
         self.conv_type = conv_type  # Flag to control which layer type to use
         self.norm = NORM
@@ -104,11 +122,14 @@ class Net(torch.nn.Module):
 
         if deterministic_dims > 0:
             self.conv1 = self._get_conv_layer(dataset.num_features, 32)
+            print(f"conv1 #params: {sum(p.numel() for p in self.conv1.parameters())}")
             self.conv2 = self._get_conv_layer(32, deterministic_dims)
+            print(f"conv2 #params: {sum(p.numel() for p in self.conv2.parameters())}")
 
         self.conv_layers = torch.nn.ModuleList()
         for _ in range(LAYERS):
             self.conv_layers.append(self._get_conv_layer(WIDTH, WIDTH))
+        print(f"additional layers #params: {sum(p.numel() for p in self.conv_layers.parameters())}")
 
         self.fc1 = torch.nn.Linear(WIDTH, WIDTH)
         self.fc2 = torch.nn.Linear(WIDTH, 32)
@@ -118,16 +139,22 @@ class Net(torch.nn.Module):
         """
         Returns the appropriate convolutional layer based on the conv_type flag.
         """
-        if self.conv_type == "gpsconv":
+        if self.conv_type == "ginsconv":
             # Example GPSConv configuration; adjust hyperparameters as needed
             conv = GATConv(in_channels, out_channels, heads=4, concat=False)
             return GPSConv(in_channels, conv=conv, heads=4)
         elif self.conv_type == "gatconv":
             return GATConv(in_channels, out_channels)
+        elif self.conv_type == "gcnconv":
+            return GCNConv(in_channels, out_channels)
+        elif self.conv_type == "sageconv":
+            return SAGEConv(in_channels, out_channels)
+        elif self.conv_type == "ginconv":
+            return GINConv(MLP(input_dim=in_channels, hidden_dim=2*in_channels, output_dim=out_channels), out_channels)
         else:
             print("yo")
             # Default to GraphConv
-            return GraphConv(in_channels, out_channels, norm=None)
+            return GraphConv(in_channels, out_channels, norm=NORM)
 
     def reset_parameters(self):
         for name, module in self._modules.items():
@@ -245,7 +272,7 @@ tst_lrn_accuracies = np.zeros((EPOCHS, SPLITS))
 
 for i in range(SPLITS):
     model.reset_parameters()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE / 100)
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.7, patience=5, min_lr=LEARNING_RATE
     )
