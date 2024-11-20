@@ -36,6 +36,25 @@ parser.add_argument("-learnRate", type=float, default=0.00065)  # Learning Rate
 args = parser.parse_args()
 
 
+# Function to permute a batch
+def permute_batch(data_batch):
+    """
+    Permutes the nodes and adjusts the graph accordingly.
+    Args:
+        data_batch (torch_geometric.data.Data): Batch of graph data.
+    Returns:
+        permuted_batch: Permuted batch.
+    """
+    permuted_batch = data_batch.clone()  # Clone the batch to keep the original intact
+
+    for data in permuted_batch.to_data_list():
+        perm = torch.randperm(data.num_nodes)  # Generate a random permutation
+        data.x = data.x[perm]  # Permute node features
+        data.edge_index = perm[data.edge_index]  # Permute edges accordingly
+
+    return permuted_batch
+
+
 # Define the MLP
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -279,6 +298,34 @@ def test(loader):
     return correct / len(loader.dataset)
 
 
+def compute_permutation_loss(loader):
+    permuted_loss_all = 0
+    for data in loader:
+        with torch.no_grad():
+            permuted_data = permute_batch(data).to(device)
+            permuted_out = model(permuted_data)
+            permuted_loss = F.nll_loss(permuted_out, permuted_data.y)
+            permuted_loss_all += data.num_graphs * permuted_loss.item()
+
+    return permuted_loss_all / len(loader.dataset)
+
+
+def compute_permutation_accuracy(loader):
+    model.eval()
+    correct = 0
+
+    for data in loader:
+        permuted_data = permute_batch(data).to(device)
+        nb_trials = 1  # Support majority vote, but single trial is default
+        successful_trials = torch.zeros_like(permuted_data.y)
+        for i in range(nb_trials):  # Majority Vote
+            pred = model(permuted_data).max(1)[1]
+            successful_trials += pred.eq(permuted_data.y)
+        successful_trials = successful_trials > (nb_trials // 2)
+        correct += successful_trials.sum().item()
+    return correct / len(loader.dataset)
+
+
 acc = []
 tr_acc = []
 SPLITS = 10
@@ -286,6 +333,11 @@ tr_accuracies = np.zeros((EPOCHS, SPLITS))
 tst_accuracies = np.zeros((EPOCHS, SPLITS))
 tst_exp_accuracies = np.zeros((EPOCHS, SPLITS))
 tst_lrn_accuracies = np.zeros((EPOCHS, SPLITS))
+
+perm_tr_accuracies = np.zeros((EPOCHS, SPLITS))
+perm_tst_accuracies = np.zeros((EPOCHS, SPLITS))
+perm_tr_losses = np.zeros((EPOCHS, SPLITS))
+perm_tst_losses = np.zeros((EPOCHS, SPLITS))
 
 for i in range(SPLITS):
     model.reset_parameters()
@@ -350,8 +402,14 @@ for i in range(SPLITS):
             best_val_loss = val_loss
         train_acc = test(train_loader)
         test_acc = test(test_loader)
+        perm_train_acc = compute_permutation_accuracy(train_loader)
+        perm_test_acc = compute_permutation_accuracy(test_loader)
+        perm_train_loss = compute_permutation_loss(train_loader)
+        perm_test_loss = compute_permutation_loss(test_loader)
         test_exp_acc = test(test_exp_loader)
         test_lrn_acc = test(test_lrn_loader)
+        perm_tr_accuracies[epoch, i] = perm_train_acc
+        perm_tst_accuracies[epoch, i] = perm_test_acc
         tr_accuracies[epoch, i] = train_acc
         tst_accuracies[epoch, i] = test_acc
         tst_exp_accuracies[epoch, i] = test_exp_acc
