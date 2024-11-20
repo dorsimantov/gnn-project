@@ -294,7 +294,6 @@ def train(epoch, loader, optimizer):
     model.train()
     loss_all = 0
 
-    print(loader)
     for data in loader:
         data = data.to(device)
         optimizer.zero_grad()
@@ -447,11 +446,14 @@ for i in range(SPLITS):
         perm_tst_accuracies[epoch, i] = perm_test_acc
         tr_accuracies[epoch, i] = train_acc
         tst_accuracies[epoch, i] = test_acc
+        perm_tr_losses[epoch, i] = perm_train_loss
+        perm_tst_losses[epoch, i] = perm_test_loss
         tst_exp_accuracies[epoch, i] = test_exp_acc
         tst_lrn_accuracies[epoch, i] = test_lrn_acc
         print_or_log(
             "Epoch: {:03d}, LR: {:7f}, Train Loss: {:.7f}, "
-            "Val Loss: {:.7f}, Test Acc: {:.7f}, Exp Acc: {:.7f}, Lrn Acc: {:.7f}, Train Acc: {:.7f}".format(
+            "Val Loss: {:.7f}, Test Acc: {:.7f}, Exp Acc: {:.7f}, Lrn Acc: {:.7f}, Train Acc: {:.7f}, "
+            "Perm Train Loss: {:.7f}, Perm Test Loss: {:.7f}, Perm Train Acc: {:.7f}, Perm Test Acc: {:.7f}".format(
                 epoch + 1,
                 lr,
                 train_loss,
@@ -460,6 +462,10 @@ for i in range(SPLITS):
                 test_exp_acc,
                 test_lrn_acc,
                 train_acc,
+                perm_train_loss,
+                perm_test_loss,
+                perm_train_acc,
+                perm_test_acc
             ),
             log_file_path="log"
             + MODEL
@@ -615,6 +621,106 @@ mean_tst_l_accuracies = np.mean(tst_lrn_accuracies, axis=1)
 for epoch in range(EPOCHS):
     print_or_log(
         "Epoch " + str(epoch + 1) + ":" + str(mean_tst_l_accuracies[epoch]),
+        log_file_path="log"
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
+    )
+
+print_or_log(
+    "Perm Training Acc:",
+    log_file_path="log"
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
+)
+mean = np.mean(perm_tr_accuracies, axis=1)
+for epoch in range(EPOCHS):
+    print_or_log(
+        "Epoch " + str(epoch + 1) + ":" + str(mean[epoch]),
+        log_file_path="log"
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
+    )
+
+print_or_log(
+    "Perm Test Acc:",
+    log_file_path="log"
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
+)
+mean = np.mean(perm_tst_accuracies, axis=1)
+for epoch in range(EPOCHS):
+    print_or_log(
+        "Epoch " + str(epoch + 1) + ":" + str(mean[epoch]),
+        log_file_path="log"
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
+    )
+
+print_or_log(
+    "Perm Training Loss:",
+    log_file_path="log"
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
+)
+mean = np.mean(perm_tr_losses, axis=1)
+for epoch in range(EPOCHS):
+    print_or_log(
+        "Epoch " + str(epoch + 1) + ":" + str(mean[epoch]),
+        log_file_path="log"
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
+    )
+
+print_or_log(
+    "Perm Test Loss:",
+    log_file_path="log"
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
+)
+mean = np.mean(perm_tst_losses, axis=1)
+for epoch in range(EPOCHS):
+    print_or_log(
+        "Epoch " + str(epoch + 1) + ":" + str(mean[epoch]),
         log_file_path="log"
         + MODEL
         + DATASET
