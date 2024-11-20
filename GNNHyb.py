@@ -1,10 +1,10 @@
 import numpy as np
 import argparse
 import torch
+from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GATConv, GPSConv
-from torch_geometric.nn import GCNConv
 from torch_geometric.nn import SAGEConv
 from torch_geometric.nn import GINConv
 from torch_scatter import scatter_max
@@ -33,24 +33,49 @@ parser.add_argument(
 )  # Normalise Layers in the GNN (default True/1)
 parser.add_argument("-activation", type=str, default="tanh")  # Non-linearity used
 parser.add_argument("-learnRate", type=float, default=0.00065)  # Learning Rate
+parser.add_argument("-learnRateGIN", type=float, default=0.00035)  # Learning Rate
 args = parser.parse_args()
 
 
 # Define the MLP
 class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.5):
         super().__init__()
-        self.net = nn.Sequential(
+        self.fc1 = torch.nn.Linear(input_dim, hidden_dim)
+        self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = torch.nn.Linear(hidden_dim, output_dim)
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        residual = x
+        x = self.fc2(x)
+        x += residual  # Skip connection
+        x = self.relu(x)
+        x = self.dropout(x)
+        return self.fc3(x)
+
+
+class SimpleMLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(SimpleMLP, self).__init__()
+        self.layers = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim)
+            nn.Linear(hidden_dim, output_dim),
+            nn.BatchNorm1d(output_dim),
+            nn.ReLU(),
         )
 
     def forward(self, x):
-        return self.net(x)
+        return self.layers(x)
 
 
-def print_or_log(input_data, log=True, log_file_path="Debug.txt"):
+def print_or_log(input_data, log=False, log_file_path="Debug.txt"):
     if not log:  # If not logging, we should just print
         print(input_data)
     else:  # Logging
@@ -82,18 +107,19 @@ DISTRIBUTION = args.probDist
 ACTIVATION = F.elu if args.activation == "elu" else F.tanh
 # CLIP = args.clip
 LEARNING_RATE = args.learnRate
+LEARNING_RATE_GIN = args.learnRateGIN
 
 NORM = args.normLayers == 1
 MODEL = (
-        "GNNHyb-"
-        + str(args.activation)
-        + "-"
-        + str(RANDOM_RATIO).replace(".", ",")
-        + "-"
-        + str(DISTRIBUTION)
-        + "-"
-        + str(NORM)
-        + "-"
+    "GNNHyb-"
+    + str(args.activation)
+    + "-"
+    + str(RANDOM_RATIO).replace(".", ",")
+    + "-"
+    + str(DISTRIBUTION)
+    + "-"
+    + str(NORM)
+    + "-"
 )
 
 if LEARNING_RATE != 0.001:
@@ -112,7 +138,7 @@ dataset = PlanarSATPairsDataset(
 
 
 class Net(torch.nn.Module):
-    def __init__(self, conv_type="sageconv"):
+    def __init__(self, conv_type="ginconv"):
         super(Net, self).__init__()
         self.conv_type = conv_type  # Flag to control which layer type to use
         self.norm = NORM
@@ -127,33 +153,40 @@ class Net(torch.nn.Module):
 
         self.conv_layers = torch.nn.ModuleList()
         for _ in range(LAYERS):
-            self.conv_layers.append(self._get_conv_layer(WIDTH + ADDITIONAL_RANDOM_FEATURES,
-                                                         WIDTH + ADDITIONAL_RANDOM_FEATURES))
-        print(f"additional layers #params: {sum(p.numel() for p in self.conv_layers.parameters())}")
+            self.conv_layers.append(
+                self._get_conv_layer(
+                    WIDTH + ADDITIONAL_RANDOM_FEATURES,
+                    WIDTH + ADDITIONAL_RANDOM_FEATURES,
+                )
+            )
+        print(
+            f"additional layers #params: {sum(p.numel() for p in self.conv_layers.parameters())}"
+        )
 
-        self.fc1 = torch.nn.Linear(WIDTH + ADDITIONAL_RANDOM_FEATURES,
-                                   WIDTH + ADDITIONAL_RANDOM_FEATURES)
-        self.fc2 = torch.nn.Linear(WIDTH + ADDITIONAL_RANDOM_FEATURES,
-                                   32)
+        self.fc1 = torch.nn.Linear(
+            WIDTH + ADDITIONAL_RANDOM_FEATURES, WIDTH + ADDITIONAL_RANDOM_FEATURES
+        )
+        self.fc2 = torch.nn.Linear(WIDTH + ADDITIONAL_RANDOM_FEATURES, 32)
         self.fc3 = torch.nn.Linear(32, dataset.num_classes)
 
     def _get_conv_layer(self, in_channels, out_channels):
         """
         Returns the appropriate convolutional layer based on the conv_type flag.
         """
-        if self.conv_type == "ginsconv":
-            # Example GPSConv configuration; adjust hyperparameters as needed
-            conv = GATConv(in_channels, out_channels, heads=4, concat=False)
-            return GPSConv(in_channels, conv=conv, heads=4)
-        elif self.conv_type == "gatconv":
+        if self.conv_type == "gatconv":
             return GATConv(in_channels, out_channels)
         elif self.conv_type == "gcnconv":
             return GCNConv(in_channels, out_channels)
         elif self.conv_type == "sageconv":
             return SAGEConv(in_channels, out_channels)
         elif self.conv_type == "ginconv":
-            return GINConv(MLP(input_dim=in_channels, hidden_dim=2 * in_channels, output_dim=out_channels),
-                           out_channels)
+            return GINConv(
+                nn=SimpleMLP(
+                    input_dim=in_channels,
+                    hidden_dim=3 * in_channels,  # A standard choice for hidden layers
+                    output_dim=out_channels,
+                ),
+            )
         else:
             print("yo")
             # Default to GraphConv
@@ -217,7 +250,7 @@ class Net(torch.nn.Module):
             data.x3 = torch.cat((data.x3, random_dims), dim=1)
 
         for layer in range(
-                LAYERS
+            LAYERS
         ):  # Number of message passing iterations we want to test over
             data.x3 = ACTIVATION(self.conv_layers[layer](data.x3, data.edge_index))
         x = data.x3
@@ -234,7 +267,8 @@ class Net(torch.nn.Module):
 
 
 device = "cpu"
-model = Net().to(device)
+conv_type = "ginconv"
+model = Net(conv_type).to(device)
 
 
 def train(epoch, loader, optimizer):
@@ -279,6 +313,7 @@ def test(loader):
     return correct / len(loader.dataset)
 
 
+lr = LEARNING_RATE if conv_type != "ginconv" else LEARNING_RATE_GIN
 acc = []
 tr_acc = []
 SPLITS = 10
@@ -289,9 +324,9 @@ tst_lrn_accuracies = np.zeros((EPOCHS, SPLITS))
 
 for i in range(SPLITS):
     model.reset_parameters()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.7, patience=5, min_lr=LEARNING_RATE
+        optimizer, mode="min", factor=0.7, patience=5, min_lr=lr
     )
 
     n = len(dataset) // SPLITS
@@ -299,7 +334,7 @@ for i in range(SPLITS):
     test_exp_mask = torch.zeros(len(dataset), dtype=torch.bool)
     test_lrn_mask = torch.zeros(len(dataset), dtype=torch.bool)
 
-    test_mask[i * n: (i + 1) * n] = 1  # Now set the masks
+    test_mask[i * n : (i + 1) * n] = 1  # Now set the masks
     learning_indices = [
         x for idx, x in enumerate(range(n * i, n * (i + 1))) if x % MODULO <= MOD_THRESH
     ]
@@ -317,7 +352,7 @@ for i in range(SPLITS):
 
     n = len(train_dataset) // SPLITS
     val_mask = torch.zeros(len(train_dataset), dtype=torch.bool)
-    val_mask[i * n: (i + 1) * n] = 1
+    val_mask[i * n : (i + 1) * n] = 1
     val_dataset = train_dataset[val_mask]
     train_dataset = train_dataset[~val_mask]
 
@@ -332,13 +367,13 @@ for i in range(SPLITS):
     print_or_log(
         "---------------- Split {} ----------------".format(i),
         log_file_path="log"
-                      + MODEL
-                      + DATASET
-                      + ","
-                      + str(LAYERS)
-                      + ","
-                      + str(WIDTH)
-                      + ".txt",
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
     )
     best_val_loss, test_acc = 100, 0
     for epoch in range(EPOCHS):
@@ -369,13 +404,13 @@ for i in range(SPLITS):
                 train_acc,
             ),
             log_file_path="log"
-                          + MODEL
-                          + DATASET
-                          + ","
-                          + str(LAYERS)
-                          + ","
-                          + str(WIDTH)
-                          + ".txt",
+            + MODEL
+            + DATASET
+            + ","
+            + str(LAYERS)
+            + ","
+            + str(WIDTH)
+            + ".txt",
         )
     acc.append(test_acc)
     tr_acc.append(train_acc)
@@ -385,82 +420,82 @@ tr_acc = torch.tensor(tr_acc)
 print_or_log(
     "---------------- Final Result ----------------",
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 print_or_log(
     "Mean: {:7f}, Std: {:7f}".format(acc.mean(), acc.std()),
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 print_or_log(
     "Tr Mean: {:7f}, Std: {:7f}".format(tr_acc.mean(), tr_acc.std()),
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 print_or_log(
     "Average Acros Splits",
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 print_or_log(
     "Training Acc:",
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 mean_tr_accuracies = np.mean(tr_accuracies, axis=1)
 for epoch in range(EPOCHS):
     print_or_log(
         "Epoch " + str(epoch + 1) + ":" + str(mean_tr_accuracies[epoch]),
         log_file_path="log"
-                      + MODEL
-                      + DATASET
-                      + ","
-                      + str(LAYERS)
-                      + ","
-                      + str(WIDTH)
-                      + ".txt",
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
     )
 
 print_or_log(
     "Testing Acc:",
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 mean_tst_accuracies = np.mean(tst_accuracies, axis=1)
 st_d_tst_accuracies = np.std(tst_accuracies, axis=1)
@@ -473,61 +508,61 @@ for epoch in range(EPOCHS):
         + "/"
         + str(st_d_tst_accuracies[epoch]),
         log_file_path="log"
-                      + MODEL
-                      + DATASET
-                      + ","
-                      + str(LAYERS)
-                      + ","
-                      + str(WIDTH)
-                      + ".txt",
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
     )
 
 print_or_log(
     "Testing Exp Acc:",
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 mean_tst_e_accuracies = np.mean(tst_exp_accuracies, axis=1)
 for epoch in range(EPOCHS):
     print_or_log(
         "Epoch " + str(epoch + 1) + ":" + str(mean_tst_e_accuracies[epoch]),
         log_file_path="log"
-                      + MODEL
-                      + DATASET
-                      + ","
-                      + str(LAYERS)
-                      + ","
-                      + str(WIDTH)
-                      + ".txt",
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
     )
 
 print_or_log(
     "Testing Lrn Acc:",
     log_file_path="log"
-                  + MODEL
-                  + DATASET
-                  + ","
-                  + str(LAYERS)
-                  + ","
-                  + str(WIDTH)
-                  + ".txt",
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ".txt",
 )
 mean_tst_l_accuracies = np.mean(tst_lrn_accuracies, axis=1)
 for epoch in range(EPOCHS):
     print_or_log(
         "Epoch " + str(epoch + 1) + ":" + str(mean_tst_l_accuracies[epoch]),
         log_file_path="log"
-                      + MODEL
-                      + DATASET
-                      + ","
-                      + str(LAYERS)
-                      + ","
-                      + str(WIDTH)
-                      + ".txt",
+        + MODEL
+        + DATASET
+        + ","
+        + str(LAYERS)
+        + ","
+        + str(WIDTH)
+        + ".txt",
     )
