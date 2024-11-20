@@ -32,7 +32,7 @@ parser.add_argument(
     "-normLayers", type=int, default=1
 )  # Normalise Layers in the GNN (default True/1)
 parser.add_argument("-activation", type=str, default="tanh")  # Non-linearity used
-parser.add_argument("-learnRate", type=float, default=0.001)  # Learning Rate
+parser.add_argument("-learnRate", type=float, default=0.00065)  # Learning Rate
 args = parser.parse_args()
 
 
@@ -99,7 +99,7 @@ MODEL = (
 if LEARNING_RATE != 0.001:
     MODEL = MODEL + "lr" + str(LEARNING_RATE) + "-"
 
-BATCH = 20
+BATCH = 400
 MODULO = 4
 MOD_THRESH = 1
 ADDITIONAL_RANDOM_FEATURES = 1
@@ -127,11 +127,14 @@ class Net(torch.nn.Module):
 
         self.conv_layers = torch.nn.ModuleList()
         for _ in range(LAYERS):
-            self.conv_layers.append(self._get_conv_layer(WIDTH, WIDTH))
+            self.conv_layers.append(self._get_conv_layer(WIDTH + ADDITIONAL_RANDOM_FEATURES,
+                                                         WIDTH + ADDITIONAL_RANDOM_FEATURES))
         print(f"additional layers #params: {sum(p.numel() for p in self.conv_layers.parameters())}")
 
-        self.fc1 = torch.nn.Linear(WIDTH, WIDTH)
-        self.fc2 = torch.nn.Linear(WIDTH, 32)
+        self.fc1 = torch.nn.Linear(WIDTH + ADDITIONAL_RANDOM_FEATURES,
+                                   WIDTH + ADDITIONAL_RANDOM_FEATURES)
+        self.fc2 = torch.nn.Linear(WIDTH + ADDITIONAL_RANDOM_FEATURES,
+                                   32)
         self.fc3 = torch.nn.Linear(32, dataset.num_classes)
 
     def _get_conv_layer(self, in_channels, out_channels):
