@@ -11,14 +11,17 @@ import torch_geometric.transforms as T
 from k_gnn import GraphConv
 import csv
 from os import path
+import sys
 
 from PlanarSATPairsDataset import PlanarSATPairsDataset
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--no-train", default=False)
 parser.add_argument("-layers", type=int, default=8)  # Number of GNN layers
-parser.add_argument("-width", type=int, default=64)  # Dimensionality of GNN embeddings
-parser.add_argument("-epochs", type=int, default=10)  # Number of training epochs
+# Dimensionality of GNN embeddings
+parser.add_argument("-width", type=int, default=64)
+# Number of training epochs
+parser.add_argument("-epochs", type=int, default=10)
 parser.add_argument("-dataset", type=str, default="EXP")  # Dataset being used
 parser.add_argument(
     "-randomRatio", type=float, default=0.0
@@ -31,9 +34,11 @@ parser.add_argument(
 parser.add_argument(
     "-normLayers", type=int, default=1
 )  # Normalise Layers in the GNN (default True/1)
-parser.add_argument("-activation", type=str, default="tanh")  # Non-linearity used
+parser.add_argument("-activation", type=str,
+                    default="tanh")  # Non-linearity used
 parser.add_argument("-learnRate", type=float, default=0.00065)  # Learning Rate
-parser.add_argument("-learnRateGIN", type=float, default=0.00035)  # Learning Rate
+parser.add_argument("-learnRateGIN", type=float,
+                    default=0.00035)  # Learning Rate
 parser.add_argument(
     "-additionalRandomFeatures", type=int, default=1
 )  # Additional Random Features
@@ -44,20 +49,33 @@ args = parser.parse_args()
 # Function to permute a batch
 def permute_batch(data_batch):
     """
-    Permutes the nodes and adjusts the graph accordingly.
+    Apply a random permutation to each graph in a batch.
+
     Args:
-        data_batch (torch_geometric.data.Data): Batch of graph data.
+        data_batch (torch_geometric.data.Batch): Batch of graphs.
+
     Returns:
-        permuted_batch: Permuted batch.
+        torch_geometric.data.Batch: Batch with permuted nodes.
     """
-    permuted_batch = data_batch.clone()  # Clone the batch to keep the original intact
+    permuted_graphs = []
 
-    for data in permuted_batch.to_data_list():
-        perm = torch.randperm(data.num_nodes)  # Generate a random permutation
-        data.x = data.x[perm]  # Permute node features
-        data.edge_index = perm[data.edge_index]  # Permute edges accordingly
+    for data in data_batch.to_data_list():
+        num_nodes = data.num_nodes
+        perm = torch.randperm(num_nodes)  # Generate a random permutation
 
-    return permuted_batch
+        # Permute node features
+        data.x = data.x[perm]
+
+        # Permute edge_index
+        inverse_perm = torch.empty_like(perm)
+        inverse_perm[perm] = torch.arange(num_nodes)
+        data.edge_index = inverse_perm[data.edge_index]
+
+        # Add the permuted graph to the list
+        permuted_graphs.append(data)
+
+    # Recreate the batch with the permuted graphs
+    return data_batch.__class__.from_data_list(permuted_graphs)
 
 
 class SimpleMLP(nn.Module):
@@ -189,9 +207,11 @@ class Net(torch.nn.Module):
 
         if deterministic_dims > 0:
             self.conv1 = self._get_conv_layer(dataset.num_features, 32)
-            print(f"conv1 #params: {sum(p.numel() for p in self.conv1.parameters())}")
+            print(f"conv1 #params: {sum(p.numel()
+                  for p in self.conv1.parameters())}")
             self.conv2 = self._get_conv_layer(32, deterministic_dims)
-            print(f"conv2 #params: {sum(p.numel() for p in self.conv2.parameters())}")
+            print(f"conv2 #params: {sum(p.numel()
+                  for p in self.conv2.parameters())}")
 
         self.conv_layers = torch.nn.ModuleList()
         for _ in range(LAYERS):
@@ -202,7 +222,8 @@ class Net(torch.nn.Module):
                 )
             )
         print(
-            f"additional layers #params: {sum(p.numel() for p in self.conv_layers.parameters())}"
+            f"additional layers #params: {
+                sum(p.numel() for p in self.conv_layers.parameters())}"
         )
 
         self.fc1 = torch.nn.Linear(
@@ -248,7 +269,8 @@ class Net(torch.nn.Module):
             elif isinstance(module, int):
                 # Skip integers explicitly
                 print(
-                    f"Skipping reset_parameters for {name} (int type detected: {module})"
+                    f"Skipping reset_parameters for {
+                        name} (int type detected: {module})"
                 )
             else:
                 # Handle unexpected types gracefully
@@ -294,7 +316,8 @@ class Net(torch.nn.Module):
         for layer in range(
             LAYERS
         ):  # Number of message passing iterations we want to test over
-            data.x3 = ACTIVATION(self.conv_layers[layer](data.x3, data.edge_index))
+            data.x3 = ACTIVATION(
+                self.conv_layers[layer](data.x3, data.edge_index))
         x = data.x3
         x = scatter_max(x, data.batch, dim=0)[0]
 
@@ -358,6 +381,7 @@ def compute_permutation_loss(loader):
     permuted_loss_all = 0
     for data in loader:
         with torch.no_grad():
+            print("orig", data.x, "permutated", permute_batch(data).x)
             permuted_data = permute_batch(data).to(device)
             permuted_out = model(permuted_data)
             permuted_loss = F.nll_loss(permuted_out, permuted_data.y)
@@ -411,7 +435,7 @@ for i in range(SPLITS):
     test_exp_mask = torch.zeros(len(dataset), dtype=torch.bool)
     test_lrn_mask = torch.zeros(len(dataset), dtype=torch.bool)
 
-    test_mask[i * n : (i + 1) * n] = 1  # Now set the masks
+    test_mask[i * n: (i + 1) * n] = 1  # Now set the masks
     learning_indices = [
         x for idx, x in enumerate(range(n * i, n * (i + 1))) if x % MODULO <= MOD_THRESH
     ]
@@ -429,7 +453,7 @@ for i in range(SPLITS):
 
     n = len(train_dataset) // SPLITS
     val_mask = torch.zeros(len(train_dataset), dtype=torch.bool)
-    val_mask[i * n : (i + 1) * n] = 1
+    val_mask[i * n: (i + 1) * n] = 1
     val_dataset = train_dataset[val_mask]
     train_dataset = train_dataset[~val_mask]
 
