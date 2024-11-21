@@ -1,9 +1,5 @@
 #!/bin/bash
 
-# Initialize conda (ensure conda is properly set up)
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate your_environment_name
-
 # Default values
 BASE_LAYERS=8
 BASE_WIDTH=64
@@ -24,7 +20,7 @@ ADDITIONAL_RANDOM_FEATURES_OPTIONS=(1 32 64 128)
 CONV_TYPES=("ginconv" "sageconv")
 
 # Command template
-BASE_COMMAND="python3 GNNHyb.py --no-train -epochs $EPOCHS -dataset $DATASET -probDist $PROBDIST -normLayers $NORMLAYERS -activation $ACTIVATION -learnRate $LEARNRATE -learnRateGIN $LEARNRATEGIN"
+BASE_COMMAND="python3 GNNHyb.py -epochs $EPOCHS -dataset $DATASET -probDist $PROBDIST -normLayers $NORMLAYERS -activation $ACTIVATION -learnRate $LEARNRATE -learnRateGIN $LEARNRATEGIN"
 
 # Iterate over convolution types
 for convType in "${CONV_TYPES[@]}"; do
