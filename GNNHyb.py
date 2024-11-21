@@ -136,7 +136,7 @@ dataset = PlanarSATPairsDataset(
     pre_filter=MyFilter(),
 )
 
-csv_file_path = "log" + MODEL + DATASET + "," + str(LAYERS) + "," + str(WIDTH) + ".csv"
+csv_file_path = "log" + MODEL + DATASET + "," + str(LAYERS) + "," + str(WIDTH) + "," + str(CONV_TYPE) + "," + str(ADDITIONAL_RANDOM_FEATURES) +  ".csv"
 
 
 def log_to_csv(csv_data, csv_file_path="logs.csv", headers=None):
