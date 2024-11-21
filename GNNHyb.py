@@ -1,6 +1,7 @@
 import numpy as np
 import argparse
 import torch
+from torch_geometric.data import Dataset
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
@@ -14,6 +15,7 @@ from os import path
 import sys
 
 from PlanarSATPairsDataset import PlanarSATPairsDataset
+from torch_geometric.datasets import TUDataset
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--no-train", default=False)
@@ -42,6 +44,34 @@ parser.add_argument(
 )  # Additional Random Features
 parser.add_argument("-convType", type=str, default="")
 args = parser.parse_args()
+
+# Permute a single graph
+def permute_graph(graph):
+    perm = torch.randperm(graph.x.size()[0])
+    graph.x = graph.x[perm]
+    node_mapping = {old: new for new, old in enumerate(perm.tolist())}
+    graph.edge_index = torch.tensor([[node_mapping[s.item()] for s in row] for row in graph.edge_index], dtype=torch.long)
+    return graph
+
+
+class PermutedDataset(Dataset):
+    def __init__(self, data_list):
+        super().__init__()
+        self.data_list = data_list
+
+    def len(self):
+        return len(self.data_list)
+
+    def get(self, idx):
+        return self.data_list[idx]
+
+
+def permute_dataset(dataset):
+    permuted_data_list = []
+    for graph in dataset:
+        permuted_graph = permute_graph(graph.clone())
+        permuted_data_list.append(permuted_graph)
+    return PermutedDataset(permuted_data_list)
 
 
 # Function to permute a batch
@@ -153,6 +183,8 @@ dataset = PlanarSATPairsDataset(
     pre_transform=T.Compose([MyPreTransform()]),
     pre_filter=MyFilter(),
 )
+dataset = TUDataset(root='./Data/', name='Mutagenicity')
+
 
 csv_file_path = (
     "log"
@@ -378,7 +410,7 @@ def compute_permutation_loss(loader):
     permuted_loss_all = 0
     for data in loader:
         with torch.no_grad():
-            print("orig", data.x, "permutated", permute_batch(data).x)
+            # print("orig", data.x, "permutated", permute_batch(data).x)
             permuted_data = permute_batch(data).to(device)
             permuted_out = model(permuted_data)
             permuted_loss = F.nll_loss(permuted_out, permuted_data.y)
@@ -444,9 +476,11 @@ for i in range(SPLITS):
 
     # Now load the datasets
     test_dataset = dataset[test_mask]
+    permuted_test_dataset = permute_dataset(test_dataset)
     test_exp_dataset = dataset[test_exp_mask]
     test_lrn_dataset = dataset[test_lrn_mask]
     train_dataset = dataset[~test_mask]
+    permuted_train_dataset = permute_dataset(train_dataset)
 
     n = len(train_dataset) // SPLITS
     val_mask = torch.zeros(len(train_dataset), dtype=torch.bool)
@@ -461,6 +495,9 @@ for i in range(SPLITS):
     )  # These are the new test splits
     test_lrn_loader = DataLoader(test_lrn_dataset, batch_size=BATCH)
     train_loader = DataLoader(train_dataset, batch_size=BATCH, shuffle=True)
+
+    permuted_train_loader = DataLoader(permuted_train_dataset, batch_size=BATCH, shuffle=True)
+    permuted_test_loader = DataLoader(permuted_test_dataset, batch_size=BATCH)
 
     print_or_log(
         "---------------- Split {} ----------------".format(i),
@@ -483,10 +520,10 @@ for i in range(SPLITS):
             best_val_loss = val_loss
         train_acc = test(train_loader)
         test_acc = test(test_loader)
-        perm_train_acc = compute_permutation_accuracy(train_loader)
-        perm_test_acc = compute_permutation_accuracy(test_loader)
-        perm_train_loss = compute_permutation_loss(train_loader)
-        perm_test_loss = compute_permutation_loss(test_loader)
+        perm_train_acc = compute_permutation_accuracy(permuted_train_loader)
+        perm_test_acc = compute_permutation_accuracy(permuted_test_loader)
+        perm_train_loss = compute_permutation_loss(permuted_train_loader)
+        perm_test_loss = compute_permutation_loss(permuted_test_loader)
         test_exp_acc = test(test_exp_loader)
         test_lrn_acc = test(test_lrn_loader)
         perm_tr_accuracies[epoch, i] = perm_train_acc
