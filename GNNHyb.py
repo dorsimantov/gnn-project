@@ -152,6 +152,9 @@ csv_file_path = (
     + str(ADDITIONAL_RANDOM_FEATURES)
     + ".csv"
 )
+if path.exists(csv_file_path):
+    print(f"The file '{csv_file_path}' already exists. Stopping the script.")
+    sys.exit(1)
 
 
 def log_to_csv(csv_data, csv_file_path="logs.csv", headers=None):
