@@ -4,9 +4,7 @@ import torch
 from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
-from torch_geometric.nn import GATConv, GPSConv
-from torch_geometric.nn import SAGEConv
-from torch_geometric.nn import GINConv
+from torch_geometric.nn import GATConv, SAGEConv, GINConv
 from torch_scatter import scatter_max
 from torch import nn
 import torch_geometric.transforms as T
@@ -36,6 +34,9 @@ parser.add_argument(
 parser.add_argument("-activation", type=str, default="tanh")  # Non-linearity used
 parser.add_argument("-learnRate", type=float, default=0.00065)  # Learning Rate
 parser.add_argument("-learnRateGIN", type=float, default=0.00035)  # Learning Rate
+parser.add_argument(
+    "-additionalRandomFeatures", type=int, default=1
+)  # Additional Random Features
 args = parser.parse_args()
 
 
@@ -56,28 +57,6 @@ def permute_batch(data_batch):
         data.edge_index = perm[data.edge_index]  # Permute edges accordingly
 
     return permuted_batch
-
-
-# Define the MLP
-class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.5):
-        super().__init__()
-        self.fc1 = torch.nn.Linear(input_dim, hidden_dim)
-        self.fc2 = torch.nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = torch.nn.Linear(hidden_dim, output_dim)
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(dropout)
-
-    def forward(self, x):
-        x = self.fc1(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-        residual = x
-        x = self.fc2(x)
-        x += residual  # Skip connection
-        x = self.relu(x)
-        x = self.dropout(x)
-        return self.fc3(x)
 
 
 class SimpleMLP(nn.Module):
@@ -129,6 +108,7 @@ ACTIVATION = F.elu if args.activation == "elu" else F.tanh
 # CLIP = args.clip
 LEARNING_RATE = args.learnRate
 LEARNING_RATE_GIN = args.learnRateGIN
+ADDITIONAL_RANDOM_FEATURES = args.additionalRandomFeatures
 
 NORM = args.normLayers == 1
 MODEL = (
@@ -149,7 +129,6 @@ if LEARNING_RATE != 0.001:
 BATCH = 400
 MODULO = 4
 MOD_THRESH = 1
-ADDITIONAL_RANDOM_FEATURES = 1
 
 dataset = PlanarSATPairsDataset(
     root="Data/" + DATASET,
@@ -157,9 +136,7 @@ dataset = PlanarSATPairsDataset(
     pre_filter=MyFilter(),
 )
 
-csv_file_path = (
-    "log" + MODEL + DATASET + "," + str(LAYERS) + "," + str(WIDTH) + ".csv"
-)
+csv_file_path = "log" + MODEL + DATASET + "," + str(LAYERS) + "," + str(WIDTH) + ".csv"
 
 
 def log_to_csv(csv_data, csv_file_path="logs.csv", headers=None):
@@ -390,7 +367,7 @@ def compute_permutation_accuracy(loader):
 lr = LEARNING_RATE if conv_type != "ginconv" else LEARNING_RATE_GIN
 acc = []
 tr_acc = []
-SPLITS = 10
+SPLITS = 5
 tr_accuracies = np.zeros((EPOCHS, SPLITS))
 tst_accuracies = np.zeros((EPOCHS, SPLITS))
 tst_exp_accuracies = np.zeros((EPOCHS, SPLITS))
@@ -526,7 +503,7 @@ for i in range(SPLITS):
                 perm_train_loss,
                 perm_test_loss,
                 perm_train_acc,
-                perm_test_acc
+                perm_test_acc,
             ),
             log_file_path="log"
             + MODEL
