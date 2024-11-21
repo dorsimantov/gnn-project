@@ -11,6 +11,8 @@ from torch_scatter import scatter_max
 from torch import nn
 import torch_geometric.transforms as T
 from k_gnn import GraphConv
+import csv
+from os import path
 
 from PlanarSATPairsDataset import PlanarSATPairsDataset
 
@@ -18,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--no-train", default=False)
 parser.add_argument("-layers", type=int, default=8)  # Number of GNN layers
 parser.add_argument("-width", type=int, default=64)  # Dimensionality of GNN embeddings
-parser.add_argument("-epochs", type=int, default=500)  # Number of training epochs
+parser.add_argument("-epochs", type=int, default=2)  # Number of training epochs
 parser.add_argument("-dataset", type=str, default="EXP")  # Dataset being used
 parser.add_argument(
     "-randomRatio", type=float, default=0.0
@@ -154,6 +156,32 @@ dataset = PlanarSATPairsDataset(
     pre_transform=T.Compose([MyPreTransform()]),
     pre_filter=MyFilter(),
 )
+
+csv_file_path = (
+    "log" + MODEL + DATASET + "," + str(LAYERS) + "," + str(WIDTH) + ".csv"
+)
+
+
+def log_to_csv(csv_data, csv_file_path="logs.csv", headers=None):
+    """
+    Logs data to a CSV file.
+
+    Parameters:
+        csv_data (dict or list): The data to log, either as a dictionary or a list.
+        csv_file_path (str): Path to the CSV file.
+        headers (list): Optional headers for the CSV file (used only on first write).
+    """
+    write_headers = headers is not None and not path.exists(csv_file_path)
+    mode = "a" if not write_headers else "w"
+
+    with open(csv_file_path, mode, newline="") as csv_file:
+        writer = csv.writer(csv_file)
+        if write_headers:
+            writer.writerow(headers)
+        if isinstance(csv_data, dict):
+            writer.writerow(csv_data.values())
+        elif isinstance(csv_data, list):
+            writer.writerow(csv_data)
 
 
 class Net(torch.nn.Module):
@@ -450,6 +478,39 @@ for i in range(SPLITS):
         perm_tst_losses[epoch, i] = perm_test_loss
         tst_exp_accuracies[epoch, i] = test_exp_acc
         tst_lrn_accuracies[epoch, i] = test_lrn_acc
+        # Log to CSV
+        data_row = [
+            epoch + 1,
+            lr,
+            train_loss,
+            val_loss,
+            test_acc,
+            test_exp_acc,
+            test_lrn_acc,
+            train_acc,
+            perm_train_loss,
+            perm_test_loss,
+            perm_train_acc,
+            perm_test_acc,
+        ]
+        if epoch == 0:  # Write headers only once
+            headers = [
+                "Epoch",
+                "Learning Rate",
+                "Train Loss",
+                "Validation Loss",
+                "Test Accuracy",
+                "Test Exp Accuracy",
+                "Test Learn Accuracy",
+                "Train Accuracy",
+                "Perm Train Loss",
+                "Perm Test Loss",
+                "Perm Train Accuracy",
+                "Perm Test Accuracy",
+            ]
+            log_to_csv(data_row, csv_file_path, headers=headers)
+        else:
+            log_to_csv(data_row, csv_file_path)
         print_or_log(
             "Epoch: {:03d}, LR: {:7f}, Train Loss: {:.7f}, "
             "Val Loss: {:.7f}, Test Acc: {:.7f}, Exp Acc: {:.7f}, Lrn Acc: {:.7f}, Train Acc: {:.7f}, "
