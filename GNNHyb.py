@@ -37,6 +37,7 @@ parser.add_argument("-learnRateGIN", type=float, default=0.00035)  # Learning Ra
 parser.add_argument(
     "-additionalRandomFeatures", type=int, default=1
 )  # Additional Random Features
+parser.add_argument("-convType", type=str, default="")
 args = parser.parse_args()
 
 
@@ -109,6 +110,7 @@ ACTIVATION = F.elu if args.activation == "elu" else F.tanh
 LEARNING_RATE = args.learnRate
 LEARNING_RATE_GIN = args.learnRateGIN
 ADDITIONAL_RANDOM_FEATURES = args.additionalRandomFeatures
+CONV_TYPE = args.convType
 
 NORM = args.normLayers == 1
 MODEL = (
@@ -162,9 +164,9 @@ def log_to_csv(csv_data, csv_file_path="logs.csv", headers=None):
 
 
 class Net(torch.nn.Module):
-    def __init__(self, conv_type="ginconv"):
+    def __init__(self):
         super(Net, self).__init__()
-        self.conv_type = conv_type  # Flag to control which layer type to use
+        self.conv_type = CONV_TYPE  # Flag to control which layer type to use
         self.norm = NORM
         self.width = WIDTH
         deterministic_dims = WIDTH - int(RANDOM_RATIO * WIDTH)
@@ -292,7 +294,7 @@ class Net(torch.nn.Module):
 
 device = "cpu"
 conv_type = "ginconv"
-model = Net(conv_type).to(device)
+model = Net().to(device)
 
 
 def train(epoch, loader, optimizer):

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Initialize conda (ensure conda is properly set up)
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate your_environment_name
+
 # Default values
 BASE_LAYERS=8
 BASE_WIDTH=64
@@ -16,26 +20,31 @@ LEARNRATEGIN=0.00035
 # Parameter ranges
 LAYER_OPTIONS=(4 8 16 32)
 WIDTH_OPTIONS=(32 64 128)
-RANDOMRATIO_OPTIONS=(0.0 0.5 1.0)
 ADDITIONAL_RANDOM_FEATURES_OPTIONS=(1 32 64 128)
+CONV_TYPES=("ginconv" "sageconv")
 
 # Command template
-BASE_COMMAND="python3 GNNHyb.py -epochs $EPOCHS -dataset $DATASET -probDist $PROBDIST -normLayers $NORMLAYERS -activation $ACTIVATION -learnRate $LEARNRATE -learnRateGIN $LEARNRATEGIN"
+BASE_COMMAND="python3 GNNHyb.py --no-train -epochs $EPOCHS -dataset $DATASET -probDist $PROBDIST -normLayers $NORMLAYERS -activation $ACTIVATION -learnRate $LEARNRATE -learnRateGIN $LEARNRATEGIN"
 
-# Vary layers
-for layers in "${LAYER_OPTIONS[@]}"; do
-    echo "Running with layers=$layers"
-    $BASE_COMMAND -layers $layers -width $BASE_WIDTH -randomRatio $BASE_RANDOMRATIO -additionalRandomFeatures $BASE_ADDITIONAL_RANDOM_FEATURES
-done
+# Iterate over convolution types
+for convType in "${CONV_TYPES[@]}"; do
+    echo "Running with convType=$convType"
 
-# Vary width
-for width in "${WIDTH_OPTIONS[@]}"; do
-    echo "Running with width=$width"
-    $BASE_COMMAND -layers $BASE_LAYERS -width $width -randomRatio $BASE_RANDOMRATIO -additionalRandomFeatures $BASE_ADDITIONAL_RANDOM_FEATURES
-done
+    # Vary layers
+    for layers in "${LAYER_OPTIONS[@]}"; do
+        echo "  Layers=$layers"
+        $BASE_COMMAND -convType $convType -layers $layers -width $BASE_WIDTH -randomRatio $BASE_RANDOMRATIO -additionalRandomFeatures $BASE_ADDITIONAL_RANDOM_FEATURES
+    done
 
-# Vary additionalRandomFeatures
-for additionalRandomFeatures in "${ADDITIONAL_RANDOM_FEATURES_OPTIONS[@]}"; do
-    echo "Running with additionalRandomFeatures=$additionalRandomFeatures"
-    $BASE_COMMAND -layers $BASE_LAYERS -width $BASE_WIDTH -randomRatio $BASE_RANDOMRATIO -additionalRandomFeatures $additionalRandomFeatures
+    # Vary width
+    for width in "${WIDTH_OPTIONS[@]}"; do
+        echo "  Width=$width"
+        $BASE_COMMAND -convType $convType -layers $BASE_LAYERS -width $width -randomRatio $BASE_RANDOMRATIO -additionalRandomFeatures $BASE_ADDITIONAL_RANDOM_FEATURES
+    done
+
+    # Vary additionalRandomFeatures
+    for additionalRandomFeatures in "${ADDITIONAL_RANDOM_FEATURES_OPTIONS[@]}"; do
+        echo "  AdditionalRandomFeatures=$additionalRandomFeatures"
+        $BASE_COMMAND -convType $convType -layers $BASE_LAYERS -width $BASE_WIDTH -randomRatio $BASE_RANDOMRATIO -additionalRandomFeatures $additionalRandomFeatures
+    done
 done
