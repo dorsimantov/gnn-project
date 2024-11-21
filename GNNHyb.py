@@ -34,11 +34,9 @@ parser.add_argument(
 parser.add_argument(
     "-normLayers", type=int, default=1
 )  # Normalise Layers in the GNN (default True/1)
-parser.add_argument("-activation", type=str,
-                    default="tanh")  # Non-linearity used
+parser.add_argument("-activation", type=str, default="tanh")  # Non-linearity used
 parser.add_argument("-learnRate", type=float, default=0.00065)  # Learning Rate
-parser.add_argument("-learnRateGIN", type=float,
-                    default=0.00035)  # Learning Rate
+parser.add_argument("-learnRateGIN", type=float, default=0.00035)  # Learning Rate
 parser.add_argument(
     "-additionalRandomFeatures", type=int, default=1
 )  # Additional Random Features
@@ -207,11 +205,9 @@ class Net(torch.nn.Module):
 
         if deterministic_dims > 0:
             self.conv1 = self._get_conv_layer(dataset.num_features, 32)
-            print(f"conv1 #params: {sum(p.numel()
-                  for p in self.conv1.parameters())}")
+            print(f"conv1 #params: {sum(p.numel() for p in self.conv1.parameters())}")
             self.conv2 = self._get_conv_layer(32, deterministic_dims)
-            print(f"conv2 #params: {sum(p.numel()
-                  for p in self.conv2.parameters())}")
+            print(f"conv2 #params: {sum(p.numel() for p in self.conv2.parameters())}")
 
         self.conv_layers = torch.nn.ModuleList()
         for _ in range(LAYERS):
@@ -223,7 +219,8 @@ class Net(torch.nn.Module):
             )
         print(
             f"additional layers #params: {
-                sum(p.numel() for p in self.conv_layers.parameters())}"
+                sum(p.numel() for p in self.conv_layers.parameters())
+            }"
         )
 
         self.fc1 = torch.nn.Linear(
@@ -269,8 +266,9 @@ class Net(torch.nn.Module):
             elif isinstance(module, int):
                 # Skip integers explicitly
                 print(
-                    f"Skipping reset_parameters for {
-                        name} (int type detected: {module})"
+                    f"Skipping reset_parameters for {name} (int type detected: {
+                        module
+                    })"
                 )
             else:
                 # Handle unexpected types gracefully
@@ -316,8 +314,7 @@ class Net(torch.nn.Module):
         for layer in range(
             LAYERS
         ):  # Number of message passing iterations we want to test over
-            data.x3 = ACTIVATION(
-                self.conv_layers[layer](data.x3, data.edge_index))
+            data.x3 = ACTIVATION(self.conv_layers[layer](data.x3, data.edge_index))
         x = data.x3
         x = scatter_max(x, data.batch, dim=0)[0]
 
@@ -435,7 +432,7 @@ for i in range(SPLITS):
     test_exp_mask = torch.zeros(len(dataset), dtype=torch.bool)
     test_lrn_mask = torch.zeros(len(dataset), dtype=torch.bool)
 
-    test_mask[i * n: (i + 1) * n] = 1  # Now set the masks
+    test_mask[i * n : (i + 1) * n] = 1  # Now set the masks
     learning_indices = [
         x for idx, x in enumerate(range(n * i, n * (i + 1))) if x % MODULO <= MOD_THRESH
     ]
@@ -453,7 +450,7 @@ for i in range(SPLITS):
 
     n = len(train_dataset) // SPLITS
     val_mask = torch.zeros(len(train_dataset), dtype=torch.bool)
-    val_mask[i * n: (i + 1) * n] = 1
+    val_mask[i * n : (i + 1) * n] = 1
     val_dataset = train_dataset[val_mask]
     train_dataset = train_dataset[~val_mask]
 
