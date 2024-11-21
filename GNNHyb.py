@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--no-train", default=False)
 parser.add_argument("-layers", type=int, default=8)  # Number of GNN layers
 parser.add_argument("-width", type=int, default=64)  # Dimensionality of GNN embeddings
-parser.add_argument("-epochs", type=int, default=2)  # Number of training epochs
+parser.add_argument("-epochs", type=int, default=10)  # Number of training epochs
 parser.add_argument("-dataset", type=str, default="EXP")  # Dataset being used
 parser.add_argument(
     "-randomRatio", type=float, default=0.0
@@ -138,7 +138,20 @@ dataset = PlanarSATPairsDataset(
     pre_filter=MyFilter(),
 )
 
-csv_file_path = "log" + MODEL + DATASET + "," + str(LAYERS) + "," + str(WIDTH) + "," + str(CONV_TYPE) + "," + str(ADDITIONAL_RANDOM_FEATURES) +  ".csv"
+csv_file_path = (
+    "log"
+    + MODEL
+    + DATASET
+    + ","
+    + str(LAYERS)
+    + ","
+    + str(WIDTH)
+    + ","
+    + str(CONV_TYPE)
+    + ","
+    + str(ADDITIONAL_RANDOM_FEATURES)
+    + ".csv"
+)
 
 
 def log_to_csv(csv_data, csv_file_path="logs.csv", headers=None):
@@ -369,7 +382,7 @@ def compute_permutation_accuracy(loader):
 lr = LEARNING_RATE if conv_type != "ginconv" else LEARNING_RATE_GIN
 acc = []
 tr_acc = []
-SPLITS = 5
+SPLITS = 1
 tr_accuracies = np.zeros((EPOCHS, SPLITS))
 tst_accuracies = np.zeros((EPOCHS, SPLITS))
 tst_exp_accuracies = np.zeros((EPOCHS, SPLITS))
@@ -379,8 +392,11 @@ perm_tr_accuracies = np.zeros((EPOCHS, SPLITS))
 perm_tst_accuracies = np.zeros((EPOCHS, SPLITS))
 perm_tr_losses = np.zeros((EPOCHS, SPLITS))
 perm_tst_losses = np.zeros((EPOCHS, SPLITS))
+SPLITS = 5
 
 for i in range(SPLITS):
+    if i > 0:
+        break
     model.reset_parameters()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
