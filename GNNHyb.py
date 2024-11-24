@@ -6,6 +6,7 @@ from torch_geometric.nn import GCNConv
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GATConv, SAGEConv, GINConv
+from torch_geometric.data import Batch
 from torch_scatter import scatter_max
 from torch import nn
 import torch_geometric.transforms as T
@@ -44,6 +45,117 @@ parser.add_argument(
 )  # Additional Random Features
 parser.add_argument("-convType", type=str, default="")
 args = parser.parse_args()
+
+
+def graph_mixup(data1, data2, alpha=0.2):
+    """
+    Applies mixup between two graphs.
+    Args:
+        data1, data2: PyTorch Geometric `Data` objects.
+        alpha: Mixup interpolation factor (default 0.2).
+    Returns:
+        Mixed `Data` object.
+    """
+    mix = torch.rand(1) * alpha
+    data_mix = data1.clone()
+    data_mix.x = mix * data1.x + (1 - mix) * data2.x  # Interpolate node features
+
+    # Combine edges (keep simple union for edge_index)
+    edge_index = torch.cat((data1.edge_index, data2.edge_index), dim=1)
+    data_mix.edge_index = torch.unique(edge_index, dim=1)  # Remove duplicate edges
+
+    return data_mix
+
+
+def drop_edges(data, p=0.1):
+    """
+    Randomly drops edges from the graph.
+    Args:
+        data: PyTorch Geometric `Data` object.
+        p: Probability of dropping each edge (default 0.1).
+    Returns:
+        Augmented `Data` object with fewer edges.
+    """
+    num_edges = data.edge_index.size(1)
+    mask = torch.rand(num_edges) > p  # Keep edges with probability (1 - p)
+    data.edge_index = data.edge_index[:, mask]
+    return data
+
+
+def add_edges(data, num_new_edges=5):
+    """
+    Randomly adds edges to the graph.
+    Args:
+        data: PyTorch Geometric `Data` object.
+        num_new_edges: Number of new edges to add (default 5).
+    Returns:
+        Augmented `Data` object with additional edges.
+    """
+    num_nodes = data.num_nodes
+    new_edges = torch.randint(0, num_nodes, (2, num_new_edges))  # Random node pairs
+    data.edge_index = torch.cat((data.edge_index, new_edges), dim=1)
+    return data
+
+
+def drop_nodes(data, p=0.1):
+    """
+    Randomly drops nodes from the graph.
+    Args:
+        data: PyTorch Geometric `Data` object.
+        p: Probability of dropping each node (default 0.1).
+    Returns:
+        Augmented `Data` object with fewer nodes and edges.
+    """
+    num_nodes = data.num_nodes
+    mask = torch.rand(num_nodes) > p  # Keep nodes with probability (1 - p)
+    keep_nodes = mask.nonzero(as_tuple=True)[0]
+
+    # Update node features
+    data.x = data.x[keep_nodes]
+
+    # Update edge index
+    node_map = torch.full((num_nodes,), -1, dtype=torch.long)
+    node_map[keep_nodes] = torch.arange(keep_nodes.size(0))
+    mask_edges = mask[data.edge_index[0]] & mask[data.edge_index[1]]  # Remove edges of dropped nodes
+    data.edge_index = node_map[data.edge_index[:, mask_edges]]  # Map old indices to new ones
+
+    return data
+
+
+def mask_features(data, mask_prob=0.1):
+    """
+    Masks features in the graph.
+    Args:
+        data: PyTorch Geometric `Data` object.
+        mask_prob: Probability of masking each feature (default 0.1).
+    Returns:
+        Augmented `Data` object with masked features.
+    """
+    # Create a random mask for all features
+    mask = torch.rand(data.x.size()) > mask_prob
+    data.x = data.x * mask
+    return data
+
+
+def augment_batch(batch, augmentation_fn, **kwargs):
+    """
+    Applies an augmentation function to each graph in a batch.
+    Args:
+        batch: PyTorch Geometric `Batch` object.
+        augmentation_fn: Function to apply to each graph (`Data` object).
+        **kwargs: Additional arguments for the augmentation function.
+    Returns:
+        Augmented `Batch` object.
+    """
+    # Split the batch into individual graphs
+    graphs = batch.to_data_list()
+
+    # Apply the augmentation function to each graph
+    augmented_graphs = [augmentation_fn(graph, **kwargs) for graph in graphs]
+
+    # Reassemble the graphs into a new batch
+    return Batch.from_data_list(augmented_graphs)
+
 
 # Permute a single graph
 def permute_graph(graph):
@@ -183,7 +295,18 @@ dataset = PlanarSATPairsDataset(
     pre_transform=T.Compose([MyPreTransform()]),
     pre_filter=MyFilter(),
 )
-dataset = TUDataset(root='./Data/', name='Mutagenicity')
+dataset = TUDataset(root='./Data/', name='NCI1')
+from collections import Counter
+labels = [data.y.item() for data in dataset]
+
+class_counts = Counter(labels)
+print(f"Class distribution: {class_counts}")
+
+# Calculate class imbalance ratio
+total_samples = sum(class_counts.values())
+for cls, count in class_counts.items():
+    print(f"Class {cls}: {count} samples, {count / total_samples:.2%} of total")
+
 
 
 csv_file_path = (
@@ -370,7 +493,12 @@ def train(epoch, loader, optimizer):
     loss_all = 0
 
     for data in loader:
-        data = data.to(device)
+        # TODO: FOR PAPER - AUGMENTATIONS FAILED
+        # Apply edge dropping to the batch
+        augmented_batch = augment_batch(data, drop_edges, p=0.00)
+        # Apply feature masking to the batch
+        augmented_batch = augment_batch(augmented_batch, mask_features, mask_prob=0.0)
+        data = augmented_batch.to(device)
         optimizer.zero_grad()
         loss = F.nll_loss(model(data), data.y)
         loss.backward()
