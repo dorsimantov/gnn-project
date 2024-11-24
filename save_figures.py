@@ -114,7 +114,7 @@ datasets = ['EXP', 'CEXP', 'NCI1']
 models = ['ginconv', 'sageconv', 'default']
 
 # Directory containing CSV files
-directory = 'true_results'
+directory = 'results'
 
 # Analyze the effect of hyperparameters
 analyze_hyperparameters(directory, datasets, models, default_hyperparams)

@@ -79,7 +79,7 @@ datasets = ['EXP', 'CEXP', 'NCI1']
 models = ['ginconv', 'sageconv', 'default']
 
 # Directory containing CSV files
-directory = 'true_results'
+directory = 'results'
 
 # Compare models for default hyperparameters
 compare_models(directory, datasets, models, default_hyperparams)
